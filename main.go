@@ -43,7 +43,7 @@ func PostUser(c *gin.Context) {
 	var user Users
 	c.Bind(&user)
 
-	if user.Firstname != "" && user.Lasttname != "" {
+	if user.Firstname != "" && user.Lastname != "" {
 		// INSERT INTO "users" (name) VALUES (user.Name);
 		db.Create(&user)
 
@@ -125,7 +125,7 @@ func UpdateUser(c *gin.Context) {
 			db.Save(&result)
 
 			// Display modified data in JSON message "success"
-			c.JSON(200, gin.H{"success": resultj})
+			c.JSON(200, gin.H{"success": result})
 		} else {
 			// Display JSON error
 			c.JSON(404, gin.H{"error": "User not found"})
