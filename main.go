@@ -1,9 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"database/sql"
 	"github.com/gin-gonic/gin"
-	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -27,7 +26,7 @@ func main() {
 	{
 		// v1.POST("/users", PostUser)
 		v1.GET("/movies", GetMovies)
-		v1.GET("/movies/:id", GetMovie)
+		v1.GET("/movies/search", GetMovie)
 		// v1.PUT("/users/:id", UpdateUser)
 		// v1.DELETE("/users/:id", DeleteUser)
 		v1.OPTIONS("/movies", OptionsMovie)
@@ -72,11 +71,28 @@ func GetMovies(c *gin.Context) {
 	defer db.Close()
 
 	var movies []Movie
+	var movie Movie
 
-	// SELECT * FROM movie
-	// db.Table("movie").Where("c00 like ?", "%interstellar%").Select("idMovie, c00, c01, c03, c05, c07, c08, c20, c21").Limit(10).Find(&movies)
-	db.Table("movie").Select("idMovie, c00, c01, c03, c05, c07, c08, c20, c21").Limit(10).Find(&movies)
-	fmt.Println(movies)
+	// // SELECT * FROM movie
+	// // db.Table("movie").Where("c00 like ?", "%interstellar%").Select("idMovie, c00, c01, c03, c05, c07, c08, c20, c21").Limit(10).Find(&movies)
+	// db.Table("movie").Select("idFile, c00, c01, c03, c05, c07, c08, c20, c21").Find(&movies)
+	// //db.Table("movie").Limit(10).Find(&movies)
+	// fmt.Println(movies)
+
+	// query
+	rows, err := db.Query("SELECT idMovie, c00, c01, c03, c05, c07, c08, c20, c21 FROM movie")
+	if err != nil {
+		panic(err)
+	}
+
+	for rows.Next() {
+		err := rows.Scan(&movie.IdMovie, &movie.C00, &movie.C01, &movie.C03, &movie.C05, &movie.C07, &movie.C08, &movie.C20, &movie.C21)
+		if err != nil {
+			panic(err)
+		}
+		movies = append(movies, movie)
+	}
+	rows.Close()
 
 	// Display JSON result
 	c.JSON(200, movies)
@@ -91,20 +107,60 @@ func GetMovie(c *gin.Context) {
 	// Close connection database
 	defer db.Close()
 
-	idMovie := c.Params.ByName("id")
 	var movie Movie
+	var movies []Movie
 
-	// SELECT * FROM users WHERE idMovie = 1;
-	db.Table("movie").Where("idMovie = ?", idMovie).Select("idMovie, c00, c01, c03, c05, c07, c08, c20, c21").Limit(1).Find(&movie)
+	// Query string parameters are parsed using the existing underlying request object.
+	// The request responds to a url matching:  /search?id=123&name=string
+	// c.Query("lastname") // shortcut for c.Request.URL.Query().Get("lastname")
+	idQuery := c.Request.URL.Query().Get("id")
+	nameQuery := c.Request.URL.Query().Get("name")
+	// fmt.Println("id : " + idQuery)
+	// fmt.Println("name : " + nameQuery)
+	// fmt.Println(idQuery)
+	// fmt.Println(reflect.TypeOf(idQuery))
+	// fmt.Println(reflect.TypeOf(nameQuery))
 
-	//db.First(&movie, idMovie)
+	var err error
+	if idQuery == "" && nameQuery == "" {
+		// fmt.Println("id, name : both arguments are empty")
+		err = db.QueryRow("SELECT idMovie, c00, c01, c03, c05, c07, c08, c20, c21 FROM movie WHERE c00 LIKE ?", "%Interstellar%").Scan(&movie.IdMovie, &movie.C00, &movie.C01, &movie.C03, &movie.C05, &movie.C07, &movie.C08, &movie.C20, &movie.C21)
+	} else if idQuery != "" && nameQuery == "" {
+		// fmt.Println("id is ok, but name argument is empty")
+		err = db.QueryRow("SELECT idMovie, c00, c01, c03, c05, c07, c08, c20, c21 FROM movie WHERE idMovie = ?", idQuery).Scan(&movie.IdMovie, &movie.C00, &movie.C01, &movie.C03, &movie.C05, &movie.C07, &movie.C08, &movie.C20, &movie.C21)
+	} else if idQuery == "" && nameQuery != "" {
+		// fmt.Println("id is blank and name is not empty")
+		rows, err2 := db.Query("SELECT idMovie, c00, c01, c03, c05, c07, c08, c20, c21 FROM movie WHERE c00 LIKE ?", "%"+nameQuery+"%")
+		if err2 != nil {
+			panic(err2)
+		}
+		for rows.Next() {
+			err3 := rows.Scan(&movie.IdMovie, &movie.C00, &movie.C01, &movie.C03, &movie.C05, &movie.C07, &movie.C08, &movie.C20, &movie.C21)
+			if err3 != nil {
+				panic(err3)
+			}
+			movies = append(movies, movie)
+		}
 
-	if movie.IdMovie != 0 {
-		// Display JSON result
-		c.JSON(200, movie)
 	} else {
+		// fmt.Println("id, name is full")
+		err = db.QueryRow("SELECT idMovie, c00, c01, c03, c05, c07, c08, c20, c21 FROM movie WHERE idMovie = ? and c00 like ?", idQuery, "%"+nameQuery+"%").Scan(&movie.IdMovie, &movie.C00, &movie.C01, &movie.C03, &movie.C05, &movie.C07, &movie.C08, &movie.C20, &movie.C21)
+	}
+
+	// query
+	// err2 := db.QueryRow("SELECT idMovie, c00, c01, c03, c05, c07, c08, c20, c21 FROM movie WHERE idMovie = ?", Idmovie).Scan(&movie.IdMovie, &movie.C00, &movie.C01, &movie.C03, &movie.C05, &movie.C07, &movie.C08, &movie.C20, &movie.C21)
+
+	if err != nil {
 		// Display JSON error
 		c.JSON(404, gin.H{"error": "Movie not found"})
+	} else {
+		// fmt.Println(len(movies))
+		if len(movies) == 0 {
+			c.JSON(200, movie)
+		} else {
+			c.JSON(200, movies)
+		}
+
 	}
 
 	// curl -i http://localhost:8080/api/v1/users/1
@@ -176,21 +232,33 @@ func GetMovie(c *gin.Context) {
 // 	// curl -i -X DELETE http://localhost:8080/api/v1/users/1
 // }
 
-func InitDb() *gorm.DB {
+// func InitDb() *gorm.DB {
+// 	// Openning file
+// 	db, err := gorm.Open("sqlite3", "./MyVideos99.db")
+// 	db.LogMode(true)
+
+// 	// Error
+// 	if err != nil {
+// 		panic(err)
+// 	}
+
+// 	// Creating the table
+// 	// if !db.HasTable(&Users{}) {
+// 	// 	db.CreateTable(&Users{})
+// 	// 	db.Set("gorm:table_options", "ENGINE=InnoDB").CreateTable(&Users{})
+// 	//
+
+// 	return db
+// }
+
+func InitDb() *sql.DB {
 	// Openning file
-	db, err := gorm.Open("sqlite3", "./MyVideos99.db")
-	db.LogMode(true)
+	db, err := sql.Open("sqlite3", "./MyVideos99.db")
 
 	// Error
 	if err != nil {
 		panic(err)
 	}
-
-	// Creating the table
-	// if !db.HasTable(&Users{}) {
-	// 	db.CreateTable(&Users{})
-	// 	db.Set("gorm:table_options", "ENGINE=InnoDB").CreateTable(&Users{})
-	//
 
 	return db
 }
