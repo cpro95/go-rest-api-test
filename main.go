@@ -120,6 +120,7 @@ func GetMovie(c *gin.Context) {
 			}
 			movies = append(movies, movie)
 		}
+		rows.Close()
 
 	} else {
 		// fmt.Println("id, name is full")
